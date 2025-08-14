@@ -74,6 +74,6 @@ def find_path(request: WikiPathRequest):
 
     path = find_wikipedia_path(start, end)
     if path:
-        return {"Path found": path, "Length": len(path)}
+        return {"path": path, "length": len(path)}
     else:
         raise HTTPException(status_code=404, detail="No path found")
