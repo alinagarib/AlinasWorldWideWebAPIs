@@ -5,9 +5,18 @@ from bs4 import BeautifulSoup
 from collections import deque
 import time
 import random
+from fastapi.middleware.cors import CORSMiddleware
 
 
 app = FastAPI(title="Wikipedia Path Finder")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # ---------- Models ----------
 class WikiPathRequest(BaseModel):
