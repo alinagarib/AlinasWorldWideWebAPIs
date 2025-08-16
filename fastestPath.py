@@ -96,9 +96,6 @@ async def find_wikipedia_path(start, end):
                 if end in links:
                     logger.info(f"Found path in {time.time() - search_start_time:.2f}s and {steps} steps.")
 
-                    for t in tasks:
-                        t.cancel()
-
                     await asyncio.gather(*tasks, return_exceptions=True) 
 
                     return path + [end]
