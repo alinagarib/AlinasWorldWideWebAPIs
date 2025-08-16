@@ -6,15 +6,20 @@ from collections import deque
 import time
 import random
 from fastapi.middleware.cors import CORSMiddleware
+import logging
+import asyncio
+import aiohttp
+from async_lru import alru_cache
 
 
 app = FastAPI(title="Wikipedia Path Finder")
 
+# ---------- CORS Middleware ----------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  
     allow_credentials=True,
-    allow_methods=["*"],
+    allow_methods=["*"],    
     allow_headers=["*"],
 )
 
@@ -23,57 +28,103 @@ class WikiPathRequest(BaseModel):
     start: str 
     end: str    
 
+# ---------- Logging Configuration ----------
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
+logger = logging.getLogger(__name__)
 
-def get_wikipedia_links(url):
-    headers = {
-        "User-Agent": "FastestWikiRaceBot/1.0 (https://www.alinasworldwideweb.com; alinahgarib@gmail.com)"
-    }
+# ---------- Global Variables ----------
+headers = {
+    "User-Agent": "FastestWikiRaceBot/1.0 (https://www.alinasworldwideweb.com; alinahgarib@gmail.com)"
+}
+semaphore = asyncio.Semaphore(20)
+MAX_DEPTH = 6  
+
+# ---------- Helper Functions ----------
+
+@alru_cache(maxsize=1000)
+async def get_wikipedia_links(url, session):
+    start_time = time.time()
+    # logging.info(f"Fetching: {url}")
+
     try:
-        response = requests.get(url, headers=headers)
-        response.raise_for_status() 
-    except requests.exceptions.RequestException as e:
-        print(f"Error fetching URL: {e}")
+        async with semaphore:
+            async with session.get(url, headers=headers) as response:
+                await  asyncio.sleep(random.uniform(0.1, 1.0))
+                html = await response.text()
+    except aiohttp.ClientError as e:
+        logger.error(f"Error fetching URL: {e}")
         return []
+    
+    elapsed = time.time() - start_time
+    # logging.info(f"Fetched {url} in {elapsed:.2f}s")
 
-    time.sleep(random.uniform(1, 3))
-    soup = BeautifulSoup(response.text, 'html.parser')
+    soup = BeautifulSoup(html, 'html.parser')
     links = []
 
     for link_tag in soup.find_all('a', href=True):
         href = link_tag['href']
-        if href.startswith('/wiki/') and not (':' in href or '#' in href or '?' in href) and "en.wikipedia.org" in url:
+        if href.startswith('/wiki/') and not (':' in href or '#' in href or '?' in href) and ("en.wikipedia.org" in url or "en.m.wikipedia.org" in url):
             full_url = "https://en.wikipedia.org" + href
             links.append(full_url)
 
     return list(set(links))
 
+async def wrapped_get_links(url, path, session):
+    links = await get_wikipedia_links(url, session)
+    return path, links
 
-def find_wikipedia_path(start, end):
-    queue = deque([(start, [start])])
+async def find_wikipedia_path(start, end):
+    logger.info(f"Starting BFS from {start} to {end}")
+    search_start_time = time.time()
+
+    queue = [(start, [start])]
     visited = set([start])
+    steps = 0
 
-    while queue:
-        current, path = queue.popleft()
+    async with aiohttp.ClientSession() as session:
+        while queue:
+            current_level = queue
+            queue = []
+            steps += 1
 
-        links = get_wikipedia_links(current)
-        for link in links:
-            if link == end:
-                return path + [end]  
+            logger.info(f"Processing BFS depth {steps} with {len(current_level)} nodes")
 
-            if link not in visited:
-                visited.add(link)
-                queue.append((link, path + [link]))
+            tasks = [asyncio.create_task(wrapped_get_links(url, path, session)) for url, path in current_level]
 
+            for coro in asyncio.as_completed(tasks):
+                path, links = await coro
+                if end in links:
+                    logger.info(f"Found path in {time.time() - search_start_time:.2f}s and {steps} steps.")
+
+                    for t in tasks:
+                        t.cancel()
+
+                    await asyncio.gather(*tasks, return_exceptions=True) 
+
+                    return path + [end]
+                
+                for link in links:
+                    if link not in visited:
+                        visited.add(link)
+                        queue.append((link, path + [link]))
+
+            if steps >= MAX_DEPTH:
+                logger.warning(f"Search terminated after {steps} steps due to excessive depth.")
+                return None
+
+    logger.warning(f"No path found after {steps} steps in {time.time() - search_start_time:.2f}s")
     return None
 
 # ---------- API Endpoint ----------
 @app.post("/find-path")
-def find_path(request: WikiPathRequest):
+async def find_path(request: WikiPathRequest):
     start = request.start
     end = request.end
 
-    path = find_wikipedia_path(start, end)
+    path = await find_wikipedia_path(start, end)
     if path:
         return {"path": path, "length": len(path)}
+    elif path is None:
+        raise HTTPException(status_code=422, detail="Search terminated due to excessive depth")
     else:
         raise HTTPException(status_code=404, detail="No path found")
