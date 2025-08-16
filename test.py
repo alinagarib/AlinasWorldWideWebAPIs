@@ -1,4 +1,3 @@
-# test_bfs.py
 import time
 import asyncio
 from fastestPath import find_wikipedia_path

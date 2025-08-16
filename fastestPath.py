@@ -1,6 +1,5 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import requests
 from bs4 import BeautifulSoup
 from collections import deque
 import time
@@ -44,7 +43,7 @@ MAX_DEPTH = 6
 @alru_cache(maxsize=1000)
 async def get_wikipedia_links(url, session):
     start_time = time.time()
-    # logging.info(f"Fetching: {url}")
+    logging.debug(f"Fetching: {url}")
 
     try:
         async with semaphore:
@@ -56,7 +55,7 @@ async def get_wikipedia_links(url, session):
         return []
     
     elapsed = time.time() - start_time
-    # logging.info(f"Fetched {url} in {elapsed:.2f}s")
+    logging.debug(f"Fetched {url} in {elapsed:.2f}s")
 
     soup = BeautifulSoup(html, 'html.parser')
     links = []
