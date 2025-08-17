@@ -4,7 +4,6 @@ from bs4 import BeautifulSoup
 from collections import deque
 import time
 import random
-from fastapi.middleware.cors import CORSMiddleware
 import logging
 import asyncio
 import aiohttp
@@ -12,15 +11,6 @@ from async_lru import alru_cache
 
 
 app = FastAPI(title="Wikipedia Path Finder")
-
-# ---------- CORS Middleware ----------
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  
-    allow_credentials=True,
-    allow_methods=["*"],    
-    allow_headers=["*"],
-)
 
 # ---------- Models ----------
 class WikiPathRequest(BaseModel):
