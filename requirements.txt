@@ -1,6 +1,6 @@
 fastapi==0.111.1
 uvicorn[standard]==0.23.2
-requests==2.31.0
+requests==2.32.0
 beautifulsoup4==4.12.2
 asyncio==3.4.3
 aiohttp==3.9.1
