@@ -21,6 +21,7 @@ def get_access_token():
         "Content-Type": "application/x-www-form-urlencoded"
     }
     response = requests.post(url, data=payload, headers=headers)
+    response.raise_for_status()
     return response.json()["access_token"]
 
 @app.get("/now-playing")
@@ -41,3 +42,21 @@ def now_playing():
         "album": data["item"]["album"]["name"],
         "album_art": data["item"]["album"]["images"][0]["url"]
     }
+
+@app.get("/profile")
+def get_profile():
+    token = get_access_token()
+    url = "https://api.spotify.com/v1/me"
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
+    
+    return {
+        "display_name": data.get("display_name"),
+        "id": data.get("id"),
+        "profile_image": data.get("images")[0]["url"] if data.get("images") else None,
+        "country": data.get("country")
+    }
+
+
