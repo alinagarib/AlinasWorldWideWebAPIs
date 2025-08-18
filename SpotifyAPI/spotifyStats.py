@@ -1,9 +1,9 @@
-from fastapi import FastAPI, Query
+from fastapi import APIRouter, Query
 import requests
 import os
 import base64
 
-app = FastAPI()
+app = APIRouter(title="Spotify Stats")
 
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
@@ -33,8 +33,10 @@ def now_playing():
     
     if response.status_code == 204 or response.status_code >= 400:
         return {"is_playing": False}
-
+    
+    response.raise_for_status()
     data = response.json()
+
     return {
         "is_playing": data["is_playing"],
         "song": data["item"]["name"],

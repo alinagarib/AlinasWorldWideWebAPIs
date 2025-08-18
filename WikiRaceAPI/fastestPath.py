@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from bs4 import BeautifulSoup
 from collections import deque
@@ -10,7 +10,7 @@ import aiohttp
 from async_lru import alru_cache
 
 
-app = FastAPI(title="Wikipedia Path Finder")
+app = APIRouter(title="Wikipedia Path Finder")
 
 # ---------- Models ----------
 class WikiPathRequest(BaseModel):
