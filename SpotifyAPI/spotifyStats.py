@@ -145,3 +145,25 @@ def top_recent(limit: int = 3, days: int = 7):
         for track_id, count in track_counts.most_common(limit)
     ]
     return top_tracks
+
+
+@router.get("/top-artists")
+def top_artists(time_range: str = Query("medium_term", enum=["short_term", "medium_term", "long_term"]), limit: int = 10):
+    token = get_access_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"https://api.spotify.com/v1/me/top/artists?time_range={time_range}&limit={limit}"
+    
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
+
+    return [
+        {
+            "name": artist["name"],
+            "genres": artist["genres"],
+            "popularity": artist["popularity"],
+            "image": artist["images"][0]["url"] if artist["images"] else None,
+            "spotify_url": artist["external_urls"]["spotify"]
+        }
+        for artist in data.get("items", [])
+    ]
