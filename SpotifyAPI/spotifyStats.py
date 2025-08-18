@@ -119,9 +119,18 @@ def top_recent(limit: int = 3, days: int = 7):
         response2.raise_for_status()
         items.extend(response2.json().get("items", []))
 
+
+    seen = set()
+    unique_items = []
+    for item in items:
+        key = (item["track"]["id"], item["played_at"])
+        if key not in seen:
+            seen.add(key)
+            unique_items.append(item)
+
     track_counts = Counter()
     track_info = {}
-    for item in items:
+    for item in unique_items:
         track = item["track"]
         track_id = track["id"]
         track_counts[track_id] += 1
