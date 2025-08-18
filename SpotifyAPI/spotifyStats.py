@@ -5,10 +5,12 @@ import base64
 
 router = APIRouter()
 
+# ----------- Environment Variables ----------
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 REFRESH_TOKEN = os.getenv("SPOTIFY_REFRESH_TOKEN")
 
+# ---------- Helper Functions ----------
 def get_access_token():
     url = "https://accounts.spotify.com/api/token"
     auth_header = base64.b64encode(f"{CLIENT_ID}:{CLIENT_SECRET}".encode()).decode()
@@ -24,6 +26,7 @@ def get_access_token():
     response.raise_for_status()
     return response.json()["access_token"]
 
+# ---------- API Endpoints ----------
 @router.get("/now-playing")
 def now_playing():
     token = get_access_token()
@@ -42,8 +45,11 @@ def now_playing():
         "song": data["item"]["name"],
         "artist": ", ".join([artist["name"] for artist in data["item"]["artists"]]),
         "album": data["item"]["album"]["name"],
-        "album_art": data["item"]["album"]["images"][0]["url"]
+        "album_art": data["item"]["album"]["images"][0]["url"],
+        "progress_ms": data.get("progress_ms"),
+        "duration_ms": data["item"]["duration_ms"] if data.get("item") else None
     }
+
 
 @router.get("/profile")
 def get_profile():
