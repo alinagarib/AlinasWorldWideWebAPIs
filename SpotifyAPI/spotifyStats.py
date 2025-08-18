@@ -24,7 +24,7 @@ def get_access_token():
     response.raise_for_status()
     return response.json()["access_token"]
 
-@app.get("/now-playing")
+@router.get("/now-playing")
 def now_playing():
     token = get_access_token()
     url = "https://api.spotify.com/v1/me/player/currently-playing"
@@ -45,7 +45,7 @@ def now_playing():
         "album_art": data["item"]["album"]["images"][0]["url"]
     }
 
-@app.get("/profile")
+@router.get("/profile")
 def get_profile():
     token = get_access_token()
     url = "https://api.spotify.com/v1/me"
@@ -62,7 +62,7 @@ def get_profile():
 
 
 
-@app.get("/top-tracks")
+@router.get("/top-tracks")
 def top_tracks(time_range: str = Query("medium_term", enum=["short_term", "medium_term", "long_term"]), limit: int = 10):
 
     # time_range: short_term (~4 weeks), medium_term (~6 months), long_term (~years)

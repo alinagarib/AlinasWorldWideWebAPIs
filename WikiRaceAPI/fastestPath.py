@@ -99,7 +99,7 @@ async def find_wikipedia_path(start, end):
     return None
 
 # ---------- API Endpoint ----------
-@app.post("/find-path")
+@router.post("/find-path")
 async def find_path(request: WikiPathRequest):
     start = request.start
     end = request.end
