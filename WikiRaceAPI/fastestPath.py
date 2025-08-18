@@ -10,7 +10,7 @@ import aiohttp
 from async_lru import alru_cache
 
 
-app = APIRouter(title="Wikipedia Path Finder")
+app = APIRouter()
 
 # ---------- Models ----------
 class WikiPathRequest(BaseModel):
