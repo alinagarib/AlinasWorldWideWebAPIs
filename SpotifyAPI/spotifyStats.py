@@ -103,21 +103,19 @@ def top_recent(limit: int = 3, days: int = 7):
     headers = {"Authorization": f"Bearer {token}"}
 
     after_ts = int((datetime.utcnow() - timedelta(days=days)).timestamp() * 1000)
+    items = []
 
-    url = f"https://api.spotify.com/v1/me/player/recently-played?after={after_ts}&limit=50"
-    response = requests.get(url, headers=headers)
-    response.raise_for_status()
-    data = response.json()
-    items = data.get("items", [])
+    for _ in range(4):
+        url = f"https://api.spotify.com/v1/me/player/recently-played?after={after_ts}&limit=50"
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        batch = response.json().get("items", [])
+        if not batch:
+            break
+        items.extend(batch)
 
-    if items:
-        earliest_ts = min(item["played_at"] for item in items)
-        earliest_ms = int(isoparse(earliest_ts).timestamp() * 1000)
-        
-        url2 = f"https://api.spotify.com/v1/me/player/recently-played?after={earliest_ms-1}&limit=50"
-        response2 = requests.get(url2, headers=headers)
-        response2.raise_for_status()
-        items.extend(response2.json().get("items", []))
+        earliest_ts = min(item["played_at"] for item in batch)
+        after_ts = int(isoparse(earliest_ts).timestamp() * 1000) - 1
 
 
     seen = set()
