@@ -2,6 +2,8 @@ from fastapi import APIRouter, Query
 import requests
 import os
 import base64
+from collections import Counter
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
@@ -91,3 +93,35 @@ def top_tracks(time_range: str = Query("medium_term", enum=["short_term", "mediu
         }
         for track in data.get("items", [])
     ]
+
+@router.get("/top-recent")
+def top_recent(limit: int = 10, days: int = 7):
+    token = get_access_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    after_ts = int((datetime.utcnow() - timedelta(days=days)).timestamp() * 1000)
+    url = f"https://api.spotify.com/v1/me/player/recently-played?after={after_ts}&limit=50"
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
+
+    track_counts = Counter()
+    track_info = {}
+    for item in data.get("items", []):
+        track = item["track"]
+        track_id = track["id"]
+        track_counts[track_id] += 1
+        track_info[track_id] = {
+            "name": track["name"],
+            "artist": ", ".join([a["name"] for a in track["artists"]]),
+            "album": track["album"]["name"],
+            "album_art": track["album"]["images"][0]["url"] if track["album"]["images"] else None,
+            "preview_url": track["preview_url"]
+        }
+
+    top_tracks = [
+        {**track_info[track_id], "plays": count}
+        for track_id, count in track_counts.most_common(limit)
+    ]
+
+    return top_tracks
