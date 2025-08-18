@@ -56,7 +56,30 @@ def get_profile():
         "display_name": data.get("display_name"),
         "id": data.get("id"),
         "profile_image": data.get("images")[0]["url"] if data.get("images") else None,
-        "country": data.get("country")
     }
 
 
+
+@app.get("/top-tracks")
+def top_tracks(time_range: str = Query("medium_term", enum=["short_term", "medium_term", "long_term"]), limit: int = 10):
+
+    # time_range: short_term (~4 weeks), medium_term (~6 months), long_term (~years)
+
+    token = get_access_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"https://api.spotify.com/v1/me/top/tracks?time_range={time_range}&limit={limit}"
+    
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
+
+    return [
+        {
+            "name": track["name"],
+            "artist": ", ".join([a["name"] for a in track["artists"]]),
+            "album": track["album"]["name"],
+            "album_art": track["album"]["images"][0]["url"] if track["album"]["images"] else None,
+            "preview_url": track["preview_url"]
+        }
+        for track in data.get("items", [])
+    ]
