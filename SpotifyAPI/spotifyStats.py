@@ -3,7 +3,7 @@ import requests
 import os
 import base64
 
-app = APIRouter()
+router = APIRouter()
 
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
