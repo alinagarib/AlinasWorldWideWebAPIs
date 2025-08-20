@@ -126,24 +126,10 @@ def top_recent(limit: int = 3, days: int = 7):
             seen.add(key)
             unique_items.append(item)
 
-    filtered_items = []
-    min_play_ms = 2000  
-
-    for i, item in enumerate(unique_items):
-        track = item["track"]
-        played_at = isoparse(item["played_at"])
-
-        next_played_at = None
-        if i + 1 < len(unique_items):
-            next_played_at = isoparse(unique_items[i + 1]["played_at"])
-
-        if not next_played_at or (next_played_at - played_at).total_seconds() * 1000 >= min_play_ms:
-            filtered_items.append(item)
-
 
     track_counts = Counter()
     track_info = {}
-    for item in filtered_items:
+    for item in unique_items:
         track = item["track"]
         track_id = track["id"]
         track_counts[track_id] += 1
