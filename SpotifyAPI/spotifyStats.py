@@ -5,6 +5,7 @@ import base64
 from collections import Counter
 from datetime import datetime, timedelta
 from dateutil.parser import isoparse
+import time
 
 
 router = APIRouter()
@@ -195,7 +196,7 @@ def minutes_played(days: int = 7):
             retry_after = int(response.headers.get("Retry-After", 1))
             time.sleep(retry_after)
             continue
-        
+
         response.raise_for_status()
         batch = response.json().get("items", [])
         if not batch:
