@@ -105,17 +105,21 @@ def top_recent(limit: int = 3, days: int = 7):
     after_ts = int((datetime.utcnow() - timedelta(days=days)).timestamp() * 1000)
     items = []
 
-    for _ in range(8):
+    while True:
         url = f"https://api.spotify.com/v1/me/player/recently-played?after={after_ts}&limit=50"
         response = requests.get(url, headers=headers)
         response.raise_for_status()
         batch = response.json().get("items", [])
         if not batch:
             break
+
         items.extend(batch)
 
         earliest_ts = min(item["played_at"] for item in batch)
         after_ts = int(isoparse(earliest_ts).timestamp() * 1000) - 1
+
+        if after_ts < int((datetime.utcnow() - timedelta(days=days)).timestamp() * 1000):
+            break
 
 
     seen = set()
