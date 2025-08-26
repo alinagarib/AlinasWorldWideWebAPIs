@@ -105,7 +105,7 @@ def top_recent(limit: int = 3, days: int = 7):
     after_ts = int((datetime.utcnow() - timedelta(days=days)).timestamp() * 1000)
     items = []
 
-    for _ in range(4):
+    for _ in range(8):
         url = f"https://api.spotify.com/v1/me/player/recently-played?after={after_ts}&limit=50"
         response = requests.get(url, headers=headers)
         response.raise_for_status()
@@ -169,3 +169,37 @@ def top_artists(time_range: str = Query("medium_term", enum=["short_term", "medi
         }
         for artist in data.get("items", [])
     ]
+
+@router.get("/minutes-played")
+def minutes_played(days: int = 7):
+    token = get_access_token()
+    headers = {"Authorization": f"Bearer {token}"}
+
+    after_ts = int((datetime.utcnow() - timedelta(days=days)).timestamp() * 1000)
+    items = []
+
+    while True:
+        url = f"https://api.spotify.com/v1/me/player/recently-played?after={after_ts}&limit=50"
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        batch = response.json().get("items", [])
+        if not batch:
+            break
+
+        items.extend(batch)
+
+        earliest_ts = min(item["played_at"] for item in batch)
+        after_ts = int(isoparse(earliest_ts).timestamp() * 1000) + 1
+
+    seen = set()
+    unique_items = []
+    for item in items:
+        key = (item["track"]["id"], item["played_at"])
+        if key not in seen:
+            seen.add(key)
+            unique_items.append(item)
+
+    total_ms = sum(item["track"]["duration_ms"] for item in unique_items)
+    total_minutes = round(total_ms / 60000)
+
+    return {"minutes_played": total_minutes, "days": days}
