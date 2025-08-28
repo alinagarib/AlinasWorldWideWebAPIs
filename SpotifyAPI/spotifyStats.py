@@ -110,10 +110,7 @@ def top_recent(limit: int = 3, days: int = 7):
         url = f"https://api.spotify.com/v1/me/player/recently-played?after={after_ts}&limit=50"
         response = requests.get(url, headers=headers)
 
-        if response.status_code == 429:
-            retry_after = int(response.headers.get("Retry-After", 1))
-            time.sleep(retry_after)
-            continue
+        time.sleep(0.1) 
     
         response.raise_for_status()
         batch = response.json().get("items", [])
@@ -192,10 +189,7 @@ def minutes_played(days: int = 7):
     while True:
         url = f"https://api.spotify.com/v1/me/player/recently-played?after={after_ts}&limit=50"
         response = requests.get(url, headers=headers)
-        if response.status_code == 429:
-            retry_after = int(response.headers.get("Retry-After", 1))
-            time.sleep(retry_after)
-            continue
+        time.sleep(0.1) 
 
         response.raise_for_status()
         batch = response.json().get("items", [])
