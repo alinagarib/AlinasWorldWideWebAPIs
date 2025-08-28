@@ -146,6 +146,9 @@ def recent_summary(limit: int = 3, days: int = 3):
         earliest_ts = min(item["played_at"] for item in batch)
         after_ts = int(isoparse(earliest_ts).timestamp() * 1000) + 1
 
+    total_ms = sum(item["track"]["duration_ms"] for item in items)
+    total_minutes = round(total_ms / 60000)
+
     seen = set()
     unique_items = []
     for item in items:
@@ -153,9 +156,6 @@ def recent_summary(limit: int = 3, days: int = 3):
         if key not in seen:
             seen.add(key)
             unique_items.append(item)
-
-    total_ms = sum(item["track"]["duration_ms"] for item in unique_items)
-    total_minutes = round(total_ms / 60000)
 
     track_counts = Counter()
     track_info = {}
