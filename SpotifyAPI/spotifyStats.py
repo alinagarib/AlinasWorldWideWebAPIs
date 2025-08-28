@@ -10,23 +10,6 @@ import time
 
 router = APIRouter()
 
-# ---------- Simple In-Memory Cache ----------
-CACHE = {}
-CACHE_TTL = 3600  # cache results for 1 hour
-
-def get_cached(key):
-    entry = CACHE.get(key)
-    if not entry:
-        return None
-    value, expiry = entry
-    if datetime.utcnow() > expiry:
-        del CACHE[key]
-        return None
-    return value
-
-def set_cache(key, value, ttl=CACHE_TTL):
-    CACHE[key] = (value, datetime.utcnow() + timedelta(seconds=ttl))
-
 # ----------- Environment Variables ----------
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
@@ -114,72 +97,6 @@ def top_tracks(time_range: str = Query("medium_term", enum=["short_term", "mediu
         for track in data.get("items", [])
     ]
 
-@router.get("/top-recent")
-def top_recent(limit: int = 3, days: int = 7):
-    cache_key = f"top_recent:{limit}:{days}"
-    cached = get_cached(cache_key)
-    if cached:
-        return cached
-
-    token = get_access_token()
-    headers = {"Authorization": f"Bearer {token}"}
-
-    after_ts = int((datetime.utcnow() - timedelta(days=days)).timestamp() * 1000)
-    items = []
-
-    while True:
-        url = f"https://api.spotify.com/v1/me/player/recently-played?after={after_ts}&limit=50"
-        response = requests.get(url, headers=headers)
-
-        if response.status_code == 429:
-            retry_after = int(response.headers.get("Retry-After", "1"))
-            time.sleep(retry_after)
-            continue
-
-        response.raise_for_status()
-        batch = response.json().get("items", [])
-        if not batch:
-            break
-
-        items.extend(batch)
-
-        earliest_ts = min(item["played_at"] for item in batch)
-        after_ts = int(isoparse(earliest_ts).timestamp() * 1000) - 1
-
-        if after_ts < int((datetime.utcnow() - timedelta(days=days)).timestamp() * 1000):
-            break
-
-    seen = set()
-    unique_items = []
-    for item in items:
-        key = (item["track"]["id"], item["played_at"])
-        if key not in seen:
-            seen.add(key)
-            unique_items.append(item)
-
-    track_counts = Counter()
-    track_info = {}
-    for item in unique_items:
-        track = item["track"]
-        track_id = track["id"]
-        track_counts[track_id] += 1
-        track_info[track_id] = {
-            "name": track["name"],
-            "artist": ", ".join([a["name"] for a in track["artists"]]),
-            "album": track["album"]["name"],
-            "album_art": track["album"]["images"][0]["url"] if track["album"]["images"] else None,
-            "preview_url": track["preview_url"]
-        }
-
-    top_tracks = [
-        {**track_info[track_id], "plays": count}
-        for track_id, count in track_counts.most_common(limit)
-    ]
-
-    set_cache(cache_key, top_tracks)
-    return top_tracks
-
-
 
 @router.get("/top-artists")
 def top_artists(time_range: str = Query("medium_term", enum=["short_term", "medium_term", "long_term"]), limit: int = 10):
@@ -202,13 +119,8 @@ def top_artists(time_range: str = Query("medium_term", enum=["short_term", "medi
         for artist in data.get("items", [])
     ]
 
-@router.get("/minutes-played")
-def minutes_played(days: int = 7):
-    cache_key = f"minutes_played:{days}"
-    cached = get_cached(cache_key)
-    if cached:
-        return cached
-
+@router.get("/recent-summary")
+def recent_summary(limit: int = 3, days: int = 3):
     token = get_access_token()
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -219,7 +131,7 @@ def minutes_played(days: int = 7):
         url = f"https://api.spotify.com/v1/me/player/recently-played?after={after_ts}&limit=50"
         response = requests.get(url, headers=headers)
 
-        if response.status_code == 429:
+        if response.status_code == 429:  
             retry_after = int(response.headers.get("Retry-After", "1"))
             time.sleep(retry_after)
             continue
@@ -245,8 +157,28 @@ def minutes_played(days: int = 7):
     total_ms = sum(item["track"]["duration_ms"] for item in unique_items)
     total_minutes = round(total_ms / 60000)
 
-    result = {"minutes_played": total_minutes, "days": days}
+    track_counts = Counter()
+    track_info = {}
+    for item in unique_items:
+        track = item["track"]
+        track_id = track["id"]
+        track_counts[track_id] += 1
+        track_info[track_id] = {
+            "name": track["name"],
+            "artist": ", ".join([a["name"] for a in track["artists"]]),
+            "album": track["album"]["name"],
+            "album_art": track["album"]["images"][0]["url"] if track["album"]["images"] else None,
+            "preview_url": track["preview_url"]
+        }
 
-    set_cache(cache_key, result)
-    return result
+    top_tracks = [
+        {**track_info[track_id], "plays": count}
+        for track_id, count in track_counts.most_common(limit)
+    ]
+
+    return {
+        "minutes_played": total_minutes,
+        "days": days,
+        "top_tracks": top_tracks
+    }
 
