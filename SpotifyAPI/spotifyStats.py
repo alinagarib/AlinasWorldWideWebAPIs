@@ -10,6 +10,23 @@ import time
 
 router = APIRouter()
 
+# ---------- Simple In-Memory Cache ----------
+CACHE = {}
+CACHE_TTL = 3600  # cache results for 1 hour
+
+def get_cached(key):
+    entry = CACHE.get(key)
+    if not entry:
+        return None
+    value, expiry = entry
+    if datetime.utcnow() > expiry:
+        del CACHE[key]
+        return None
+    return value
+
+def set_cache(key, value, ttl=CACHE_TTL):
+    CACHE[key] = (value, datetime.utcnow() + timedelta(seconds=ttl))
+
 # ----------- Environment Variables ----------
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
@@ -97,9 +114,13 @@ def top_tracks(time_range: str = Query("medium_term", enum=["short_term", "mediu
         for track in data.get("items", [])
     ]
 
-
 @router.get("/top-recent")
 def top_recent(limit: int = 3, days: int = 7):
+    cache_key = f"top_recent:{limit}:{days}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
     token = get_access_token()
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -110,8 +131,11 @@ def top_recent(limit: int = 3, days: int = 7):
         url = f"https://api.spotify.com/v1/me/player/recently-played?after={after_ts}&limit=50"
         response = requests.get(url, headers=headers)
 
-        time.sleep(0.1) 
-    
+        if response.status_code == 429:
+            retry_after = int(response.headers.get("Retry-After", "1"))
+            time.sleep(retry_after)
+            continue
+
         response.raise_for_status()
         batch = response.json().get("items", [])
         if not batch:
@@ -125,7 +149,6 @@ def top_recent(limit: int = 3, days: int = 7):
         if after_ts < int((datetime.utcnow() - timedelta(days=days)).timestamp() * 1000):
             break
 
-
     seen = set()
     unique_items = []
     for item in items:
@@ -133,7 +156,6 @@ def top_recent(limit: int = 3, days: int = 7):
         if key not in seen:
             seen.add(key)
             unique_items.append(item)
-
 
     track_counts = Counter()
     track_info = {}
@@ -154,7 +176,9 @@ def top_recent(limit: int = 3, days: int = 7):
         for track_id, count in track_counts.most_common(limit)
     ]
 
+    set_cache(cache_key, top_tracks)
     return top_tracks
+
 
 
 @router.get("/top-artists")
@@ -180,6 +204,11 @@ def top_artists(time_range: str = Query("medium_term", enum=["short_term", "medi
 
 @router.get("/minutes-played")
 def minutes_played(days: int = 7):
+    cache_key = f"minutes_played:{days}"
+    cached = get_cached(cache_key)
+    if cached:
+        return cached
+
     token = get_access_token()
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -189,7 +218,11 @@ def minutes_played(days: int = 7):
     while True:
         url = f"https://api.spotify.com/v1/me/player/recently-played?after={after_ts}&limit=50"
         response = requests.get(url, headers=headers)
-        time.sleep(0.1) 
+
+        if response.status_code == 429:
+            retry_after = int(response.headers.get("Retry-After", "1"))
+            time.sleep(retry_after)
+            continue
 
         response.raise_for_status()
         batch = response.json().get("items", [])
@@ -212,4 +245,8 @@ def minutes_played(days: int = 7):
     total_ms = sum(item["track"]["duration_ms"] for item in unique_items)
     total_minutes = round(total_ms / 60000)
 
-    return {"minutes_played": total_minutes, "days": days}
+    result = {"minutes_played": total_minutes, "days": days}
+
+    set_cache(cache_key, result)
+    return result
+
