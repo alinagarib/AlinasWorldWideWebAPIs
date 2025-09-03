@@ -3,7 +3,7 @@ import requests
 import os
 import base64
 from collections import Counter
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dateutil.parser import isoparse
 import time
 
@@ -124,7 +124,7 @@ def recent_summary(limit: int = 3, days: int = 3):
     token = get_access_token()
     headers = {"Authorization": f"Bearer {token}"}
 
-    cutoff_time = datetime.utcnow() - timedelta(days=days)
+    cutoff_time = datetime.utcnow().replace(tzinfo=timezone.utc) - timedelta(days=days)
     items = []
     before_ts = None
 
