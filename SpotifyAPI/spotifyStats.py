@@ -118,17 +118,18 @@ def top_artists(time_range: str = Query("medium_term", enum=["short_term", "medi
         }
         for artist in data.get("items", [])
     ]
-
 @router.get("/recent-summary")
 def recent_summary(limit: int = 3, days: int = 3):
     token = get_access_token()
     headers = {"Authorization": f"Bearer {token}"}
 
+    # Make cutoff_time timezone-aware (UTC)
     cutoff_time = datetime.utcnow().replace(tzinfo=timezone.utc) - timedelta(days=days)
     items = []
     before_ts = None
 
     while True:
+        # Build URL with before parameter for pagination
         if before_ts:
             url = f"https://api.spotify.com/v1/me/player/recently-played?before={before_ts}&limit=50"
         else:
@@ -147,9 +148,11 @@ def recent_summary(limit: int = 3, days: int = 3):
         if not batch:
             break
 
+        # Check if we've gone back far enough in time
         oldest_in_batch = min(isoparse(item["played_at"]) for item in batch)
         
         if oldest_in_batch < cutoff_time:
+            # Filter out items older than our cutoff and add the rest
             valid_items = [
                 item for item in batch 
                 if isoparse(item["played_at"]) >= cutoff_time
@@ -157,12 +160,13 @@ def recent_summary(limit: int = 3, days: int = 3):
             items.extend(valid_items)
             break
         
+        # All items in this batch are within our time range
         items.extend(batch)
         
         # Set before_ts to the oldest item's timestamp for next iteration
         before_ts = int(oldest_in_batch.timestamp() * 1000)
 
-    # Remove duplicates 
+    # Remove duplicates (same track played at same time)
     seen = set()
     unique_items = []
     for item in items:
@@ -171,9 +175,11 @@ def recent_summary(limit: int = 3, days: int = 3):
             seen.add(key)
             unique_items.append(item)
 
+    # Calculate total listening time from unique items only
     total_ms = sum(item["track"]["duration_ms"] for item in unique_items)
     total_minutes = round(total_ms / 60000)
 
+    # Count track plays and collect track info
     track_counts = Counter()
     track_info = {}
     for item in unique_items:
@@ -193,8 +199,33 @@ def recent_summary(limit: int = 3, days: int = 3):
         for track_id, count in track_counts.most_common(limit)
     ]
 
+        # Debug prints for server logs
+    print(f"🎵 Spotify Summary Debug:")
+    print(f"  - Total items fetched: {len(items)}")
+    print(f"  - Unique items after dedup: {len(unique_items)}")
+    print(f"  - Total unique tracks: {len(track_counts)}")
+    print(f"  - Cutoff time: {cutoff_time.isoformat()}")
+    print(f"  - Top 10 track play counts:")
+    for track_id, count in track_counts.most_common(10):
+        track_name = track_info[track_id]["name"]
+        artist = track_info[track_id]["artist"]
+        print(f"    * '{track_name}' by {artist}: {count} plays")
+
+    top_tracks = [
+        {**track_info[track_id], "plays": count}
+        for track_id, count in track_counts.most_common(limit)
+    ]
+
+    # Optional: Add debug info (remove in production)
+    debug_info = {
+        "total_items_fetched": len(items),
+        "unique_items_after_dedup": len(unique_items),
+        "cutoff_time": cutoff_time.isoformat()
+    }
+
     return {
         "minutes_played": total_minutes,
         "days": days,
         "top_tracks": top_tracks,
+        "debug": debug_info  # Remove this in production
     }
