@@ -124,11 +124,16 @@ def recent_summary(limit: int = 3, days: int = 3):
     token = get_access_token()
     headers = {"Authorization": f"Bearer {token}"}
 
-    after_ts = int((datetime.utcnow() - timedelta(days=days)).timestamp() * 1000)
+    cutoff_time = datetime.utcnow() - timedelta(days=days)
     items = []
+    before_ts = None
 
     while True:
-        url = f"https://api.spotify.com/v1/me/player/recently-played?after={after_ts}&limit=50"
+        if before_ts:
+            url = f"https://api.spotify.com/v1/me/player/recently-played?before={before_ts}&limit=50"
+        else:
+            url = f"https://api.spotify.com/v1/me/player/recently-played?limit=50"
+        
         response = requests.get(url, headers=headers)
 
         if response.status_code == 429:  
@@ -138,17 +143,26 @@ def recent_summary(limit: int = 3, days: int = 3):
 
         response.raise_for_status()
         batch = response.json().get("items", [])
+        
         if not batch:
             break
 
+        oldest_in_batch = min(isoparse(item["played_at"]) for item in batch)
+        
+        if oldest_in_batch < cutoff_time:
+            valid_items = [
+                item for item in batch 
+                if isoparse(item["played_at"]) >= cutoff_time
+            ]
+            items.extend(valid_items)
+            break
+        
         items.extend(batch)
+        
+        # Set before_ts to the oldest item's timestamp for next iteration
+        before_ts = int(oldest_in_batch.timestamp() * 1000)
 
-        earliest_ts = min(item["played_at"] for item in batch)
-        after_ts = int(isoparse(earliest_ts).timestamp() * 1000) + 1
-
-    total_ms = sum(item["track"]["duration_ms"] for item in items)
-    total_minutes = round(total_ms / 60000)
-
+    # Remove duplicates 
     seen = set()
     unique_items = []
     for item in items:
@@ -156,6 +170,9 @@ def recent_summary(limit: int = 3, days: int = 3):
         if key not in seen:
             seen.add(key)
             unique_items.append(item)
+
+    total_ms = sum(item["track"]["duration_ms"] for item in unique_items)
+    total_minutes = round(total_ms / 60000)
 
     track_counts = Counter()
     track_info = {}
@@ -179,6 +196,5 @@ def recent_summary(limit: int = 3, days: int = 3):
     return {
         "minutes_played": total_minutes,
         "days": days,
-        "top_tracks": top_tracks
+        "top_tracks": top_tracks,
     }
-
