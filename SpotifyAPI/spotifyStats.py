@@ -118,6 +118,9 @@ def top_artists(time_range: str = Query("medium_term", enum=["short_term", "medi
         }
         for artist in data.get("items", [])
     ]
+
+
+
 @router.get("/recent-summary")
 def recent_summary(limit: int = 3, days: int = 3):
     token = get_access_token()
@@ -127,14 +130,17 @@ def recent_summary(limit: int = 3, days: int = 3):
     cutoff_time = datetime.utcnow().replace(tzinfo=timezone.utc) - timedelta(days=days)
     items = []
     before_ts = None
+    batch_count = 0
 
     while True:
+        batch_count += 1
         # Build URL with before parameter for pagination
         if before_ts:
             url = f"https://api.spotify.com/v1/me/player/recently-played?before={before_ts}&limit=50"
         else:
             url = f"https://api.spotify.com/v1/me/player/recently-played?limit=50"
         
+        print(f"🔄 Batch {batch_count}: {url}")
         response = requests.get(url, headers=headers)
 
         if response.status_code == 429:  
@@ -146,10 +152,18 @@ def recent_summary(limit: int = 3, days: int = 3):
         batch = response.json().get("items", [])
         
         if not batch:
+            print(f"❌ No more items returned, stopping pagination")
             break
 
         # Check if we've gone back far enough in time
         oldest_in_batch = min(isoparse(item["played_at"]) for item in batch)
+        newest_in_batch = max(isoparse(item["played_at"]) for item in batch)
+        
+        print(f"📅 Batch {batch_count}: {len(batch)} items")
+        print(f"   Oldest: {oldest_in_batch}")
+        print(f"   Newest: {newest_in_batch}")
+        print(f"   Cutoff: {cutoff_time}")
+        print(f"   Oldest < Cutoff? {oldest_in_batch < cutoff_time}")
         
         if oldest_in_batch < cutoff_time:
             # Filter out items older than our cutoff and add the rest
@@ -157,14 +171,19 @@ def recent_summary(limit: int = 3, days: int = 3):
                 item for item in batch 
                 if isoparse(item["played_at"]) >= cutoff_time
             ]
+            print(f"✅ Found cutoff point, adding {len(valid_items)} valid items from this batch")
             items.extend(valid_items)
             break
         
         # All items in this batch are within our time range
         items.extend(batch)
+        print(f"➕ Added all {len(batch)} items from batch {batch_count}")
         
         # Set before_ts to the oldest item's timestamp for next iteration
         before_ts = int(oldest_in_batch.timestamp() * 1000)
+        print(f"⏭️  Next before_ts: {before_ts}")
+
+    print(f"🏁 Pagination complete: {batch_count} batches, {len(items)} total items")
 
     # Remove duplicates (same track played at same time)
     seen = set()
@@ -194,12 +213,7 @@ def recent_summary(limit: int = 3, days: int = 3):
             "preview_url": track["preview_url"]
         }
 
-    top_tracks = [
-        {**track_info[track_id], "plays": count}
-        for track_id, count in track_counts.most_common(limit)
-    ]
-
-        # Debug prints for server logs
+    # Debug prints for server logs
     print(f"🎵 Spotify Summary Debug:")
     print(f"  - Total items fetched: {len(items)}")
     print(f"  - Unique items after dedup: {len(unique_items)}")
