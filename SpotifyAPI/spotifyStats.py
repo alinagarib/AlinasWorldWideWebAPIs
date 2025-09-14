@@ -119,8 +119,22 @@ def top_artists(time_range: str = Query("medium_term", enum=["short_term", "medi
         for artist in data.get("items", [])
     ]
 
+# create seperate endpoint the retrives the data from the db
+# query to get minutes played in last 3 days from dynamoDB table, and most repeated tracks in last three days
+# this is called to populate data on the front end
 
+# in lambda to populate the DB, 
+# runs every three hours, 8 times a day, uses get recently played, uses max limit of tracks: 50
+# checks the played_at time. [date-time] string, and compares their values, if there are two within
+# 20 seconds of eachother, pop the one with the earlier date-time, it was a skip, this will be ignored in the DB
+# add like a 2-5 second timeout to avoid rate limits, now that the loading on the screen is not dependent on this
+# endpoint and only querying, it can be longer. this should help with the rate limiting on spotify API
 
+# might as well start keeping track of all my listening history in my own db
+# maybe two dynamoDB tables, one for all track data
+# one which is organized by artists on the highest level, then by album, then by tracks, which stores an int to how many listens
+
+#TODO: replace this endpoint with the two methods denoted above
 @router.get("/recent-summary")
 def recent_summary(limit: int = 3, days: int = 3):
     token = get_access_token()

@@ -6,3 +6,4 @@ asyncio==3.4.3
 aiohttp==3.9.1
 async-lru==2.0.5
 python-dateutil==2.8.2
+boto3==1.40.30
