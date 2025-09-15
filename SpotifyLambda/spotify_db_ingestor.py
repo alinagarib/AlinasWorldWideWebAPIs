@@ -46,7 +46,6 @@ def get_access_token():
 def get_last_played_at():
     """Fetches the played_at timestamp of the last entry from DynamoDB."""
     try:
-        # Use your defined MY_USER_ID as the partition key value
         response = listening_history_table.query(
             KeyConditionExpression=boto3.dynamodb.conditions.Key('user_id').eq(MY_USER_ID),
             ScanIndexForward=False,
@@ -136,10 +135,9 @@ def lambda_handler(event, context):
                 current_time = isoparse(current_track["played_at"])
                 previous_time = isoparse(previous_track["played_at"])
                 
-                # Calculate the time difference in seconds
                 time_difference = (current_time - previous_time).total_seconds()
                 
-                # See if it is a skip
+                # checks if the song is a skip
                 if time_difference > SKIP_THRESHOLD_SECONDS:
                     filtered_tracks.append(current_track)
         
@@ -154,7 +152,7 @@ def lambda_handler(event, context):
                     Item={
                         'user_id': MY_USER_ID,
                         'played_at': item["played_at"], # ISO string
-                        'played_at_timestamp': int(isoparse(item["played_at"]).timestamp() * 1000), # Unix timestamp in milliseconds
+                        'played_at_timestamp': int(isoparse(item["played_at"]).timestamp() * 1000), # Unix timestamp in milliseconds, for api calls
                         'track_id': track["id"],
                         'track_name': track["name"],
                         'artist_name': ", ".join([a["name"] for a in track["artists"]]),
@@ -165,14 +163,13 @@ def lambda_handler(event, context):
                     }
                 )
 
-        # save data to artist album track listening histry
+        # Save data to artist album track listening history
         for item in filtered_tracks:
             track = item["track"]
             album_name = track["album"]["name"]
             
             artists = ", ".join([a["name"] for a in track["artists"]])
 
-            # Construct the composite key for this track
             pk = f"ARTIST#{artists}"
             sk = f"TRACK#{album_name}#{track['name']}"
 
