@@ -58,29 +58,29 @@ def get_last_played_at():
         print(f"Error getting last played_at: {e}")
         return None
     
-def get_last_three_days_tracks():
+def get_last_week_tracks():
     """Fetches tracks from the last three days of listening history."""
-    three_days_ago_timestamp_ms = int((datetime.now(timezone.utc) - timedelta(days=3)).timestamp() * 1000)
-    last_three_days_tracks = []
+    last_week_timestamp_ms = int((datetime.now(timezone.utc) - timedelta(days=7)).timestamp() * 1000)
+    last_week_tracks = []
     
     query_params = {
         'KeyConditionExpression': boto3.dynamodb.conditions.Key('user_id')
         .eq(MY_USER_ID) & boto3.dynamodb
         .conditions.Key('played_at_timestamp')
-        .gte(three_days_ago_timestamp_ms)
+        .gte(last_week_timestamp_ms)
     }
 
     try:
         while True:
             response = listening_history_table.query(**query_params)
-            last_three_days_tracks.extend(response.get('Items', []))
+            last_week_tracks.extend(response.get('Items', []))
             
             if 'LastEvaluatedKey' in response:
                 query_params['ExclusiveStartKey'] = response['LastEvaluatedKey']
             else:
                 break
         
-        return last_three_days_tracks
+        return last_week_tracks
 
     except Exception as e:
         print(f"Error fetching last 3 days of tracks: {e}")
@@ -117,7 +117,6 @@ def lambda_handler(event, context):
             
             new_tracks.extend(data.get("items", []))
             
-            # The next URL to fetch is provided directly by the API
             next_url = data.get("next")
             if not next_url:
                 print("No more pages to fetch. Stopping pagination.")
@@ -188,22 +187,52 @@ def lambda_handler(event, context):
             )
 
         # --- Aggregation Logic ---
-        last_three_days_data = get_last_three_days_tracks()
+        last_week_data = get_last_week_tracks()
         
-        if last_three_days_data is not None:
-            print(f"Successfully fetched {len(last_three_days_data)} tracks from the last 3 days for aggregation.")
+        if last_week_data is not None:
+            print(f"Successfully fetched {len(last_week_data)} tracks from the last week for aggregation.")
             
             # 1. Calculate total minutes listened
-            total_duration_ms = sum([item['duration_ms'] for item in last_three_days_data])
+            total_duration_ms = sum([item['duration_ms'] for item in last_week_data])
             total_minutes = round(total_duration_ms / 60000)
 
             # 2. Get the top three most-listened-to tracks
-            tracks_counter = Counter([item['track_name'] for item in last_three_days_data])
+            tracks_counter = Counter([item['track_name'] for item in last_week_data])
             on_repeat_tracks = tracks_counter.most_common(3)
+
+            artist_duration = {}
+            artist_metadata = {}
             
-            # 3. Collect track info for the top tracks from the last 3 days
+            for item in last_week_data:
+                artist_name = item['artist_name']
+                duration_ms = item['duration_ms']
+                
+                # Accumulate listening time
+                if artist_name in artist_duration:
+                    artist_duration[artist_name] += duration_ms
+                else:
+                    artist_duration[artist_name] = duration_ms
+                
+                # Store metadata (only need to do this once per artist)
+                if artist_name not in artist_metadata:
+                    artist_metadata[artist_name] = {
+                        'artist_name': artist_name,
+                        'album_art': item.get('album_art', 'N/A')
+                    }
+            
+            # Find top artist by total listening time
+            top_artist_name = max(artist_duration, key=artist_duration.get)
+            top_artist_minutes = round(artist_duration[top_artist_name] / 60000)
+            unique_artists_count = len(artist_duration)
+            
+            top_artist_data = {
+                'artist_name': top_artist_name,
+                'album_art': artist_metadata[top_artist_name]['album_art'],
+                'minutes_listened': top_artist_minutes
+            }
+
             track_info_map = {}
-            for item in last_three_days_data:
+            for item in last_week_data:
                 track_name = item['track_name']
                 if track_name not in track_info_map:
                     track_info_map[track_name] = {
@@ -229,10 +258,12 @@ def lambda_handler(event, context):
                 Key={
                     'summary_id': SUMMARY_ID
                 },
-                UpdateExpression='SET total_minutes = :minutes, on_repeat_tracks = :tracks, last_updated_timestamp = :timestamp',
+                UpdateExpression='SET total_minutes = :minutes, on_repeat_tracks = :tracks, top_artist = :artist, unique_artists = :unique_artists, last_updated_timestamp = :timestamp',
                 ExpressionAttributeValues={
                     ':minutes': total_minutes,
                     ':tracks': formatted_on_repeat_tracks,
+                    ':artist': top_artist_data,
+                    ':unique_artists': unique_artists_count,
                     ':timestamp': int(datetime.now(timezone.utc).timestamp())
                 }
             )
