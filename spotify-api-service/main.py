@@ -27,8 +27,10 @@ CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
 CLIENT_SECRET = os.getenv("SPOTIFY_CLIENT_SECRET")
 REFRESH_TOKEN = os.getenv("SPOTIFY_REFRESH_TOKEN")
 RECENT_SUMMARY_TABLE = os.environ.get("RECENT_SUMMARY_TABLE")
+LISTENING_HISTORY_TABLE = os.environ.get("LISTENING_HISTORY_TABLE")
 dynamodb = boto3.resource('dynamodb')
 recent_summary_table = dynamodb.Table(RECENT_SUMMARY_TABLE)
+listening_history_table = dynamodb.Table(LISTENING_HISTORY_TABLE)
 
 # ---------- Helper Functions ----------
 def get_access_token():
@@ -135,7 +137,6 @@ def top_artists(time_range: str = Query("medium_term", enum=["short_term", "medi
     ]
 
 
-
 @app.get("/recent-summary")
 def get_recent_summary():
     """Fetches the pre-aggregated recent summary from DynamoDB."""
@@ -164,3 +165,39 @@ def get_recent_summary():
     except Exception as e:
         print(f"Error fetching recent summary from DynamoDB: {e}")
         return {"error": "Could not retrieve recent summary data."}
+
+@app.get("/listening-history")
+def get_listening_history(limit: int = Query(10, ge=1, le=100)):
+    try:
+        response = listening_history_table.query(
+            KeyConditionExpression=boto3.dynamodb.conditions.Key('user_id').eq('alinagrb'),
+            ScanIndexForward=False,  # Get most recent first
+            Limit=limit
+        )
+        
+        tracks = response.get('Items', [])
+        
+        if not tracks:
+            return {"message": "No listening history found.", "tracks": []}
+        
+        formatted_tracks = [
+            {
+                "track_name": track.get('track_name'),
+                "artist_name": track.get('artist_name'),
+                "album": track.get('album'),
+                "album_art": track.get('album_art'),
+                "played_at": track.get('played_at'),
+                "duration_ms": int(track.get('duration_ms', 0)),
+                "preview_url": track.get('preview_url')
+            }
+            for track in tracks
+        ]
+        
+        return {
+            "count": len(formatted_tracks),
+            "tracks": formatted_tracks
+        }
+    
+    except Exception as e:
+        print(f"Error fetching listening history: {e}")
+        return {"error": "Could not retrieve listening history data."}
