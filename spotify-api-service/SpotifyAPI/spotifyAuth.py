@@ -4,8 +4,9 @@
 # import os
 
 # # use on local to get a new refresh token when needed
-# CLIENT_ID = ""
-# REDIRECT_URI = ""
+# CLIENT_ID = 
+# CLIENT_SECRET = 
+# REDIRECT_URI = 
 
 # SCOPE = " ".join([
 #     "user-read-playback-state",
