@@ -52,7 +52,7 @@ def get_access_token():
 @app.get("/now-playing")
 def now_playing():
     token = get_access_token()
-    url = "https://api.spotify.com/v1/me/player/currently-playing"
+    url = "https://api.spotify.com/v1/me/player/currently-playing?additional_types=track,episode"
     headers = {"Authorization": f"Bearer {token}"}
     response = requests.get(url, headers=headers)
     
@@ -62,15 +62,34 @@ def now_playing():
     response.raise_for_status()
     data = response.json()
 
-    return {
-        "is_playing": data["is_playing"],
-        "song": data["item"]["name"],
-        "artist": ", ".join([artist["name"] for artist in data["item"]["artists"]]),
-        "album": data["item"]["album"]["name"],
-        "album_art": data["item"]["album"]["images"][0]["url"],
-        "progress_ms": data.get("progress_ms"),
-        "duration_ms": data["item"]["duration_ms"] if data.get("item") else None
+    currently_playing_type = data.get("currently_playing_type", "track")
+    item = data.get("item")
+
+    if not item:
+        return {"is_playing": False}
+
+    if currently_playing_type == "episode":
+        return {
+            "is_playing": data["is_playing"],
+            "type": "episode",
+            "name": item["name"],
+            "show_name": item["show"]["name"],
+            "publisher": item["show"]["publisher"],
+            "description": item.get("description", ""),
+            "image": item["images"][0]["url"] if item.get("images") else None,
+            "progress_ms": data.get("progress_ms"),
+            "duration_ms": item["duration_ms"]
     }
+    else:
+        return {
+            "is_playing": data["is_playing"],
+            "song": data["item"]["name"],
+            "artist": ", ".join([artist["name"] for artist in data["item"]["artists"]]),
+            "album": data["item"]["album"]["name"],
+            "album_art": data["item"]["album"]["images"][0]["url"],
+            "progress_ms": data.get("progress_ms"),
+            "duration_ms": data["item"]["duration_ms"] if data.get("item") else None
+        }
 
 
 @app.get("/profile")
@@ -201,3 +220,35 @@ def get_listening_history(limit: int = Query(10, ge=1, le=100)):
     except Exception as e:
         print(f"Error fetching listening history: {e}")
         return {"error": "Could not retrieve listening history data."}
+
+@app.get("/recent-listening")
+def get_recent_listening(limit: int = Query(10, ge=1, le=50)):
+    token = get_access_token()
+    url = f"https://api.spotify.com/v1/me/player/recently-played?limit={limit}"    
+    headers = {"Authorization": f"Bearer {token}"}
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
+    
+    recent_tracks = []
+    
+    for item in data.get("items", []):
+        track_details = item.get("track")
+        
+        if not track_details:
+            continue
+            
+        try:
+            recent_tracks.append({
+                'track_id': track_details["id"],
+                'track_name': track_details["name"],
+                'artist_name': ", ".join([a["name"] for a in track_details["artists"]]),
+                'album': track_details["album"]["name"],
+                'album_art': track_details["album"]["images"][0]["url"] if track_details["album"]["images"] else None,
+                'preview_url': track_details["preview_url"]
+            })
+        except KeyError as e:
+            print(f"Warning: Track item missing key: {e} in {track_details.get('id')}")
+            continue
+
+    return recent_tracks
