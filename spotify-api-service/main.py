@@ -5,11 +5,12 @@ from fastapi import FastAPI
 from mangum import Mangum
 from fastapi import FastAPI
 from mangum import Mangum
-from fastapi import Query
+from fastapi import Query, Body
 import requests
 import os
 import base64
 import boto3
+import urllib.parse
 
 # Create FastAPI app
 app = FastAPI()
@@ -252,3 +253,73 @@ def get_recent_listening(limit: int = Query(10, ge=1, le=50)):
             continue
 
     return recent_tracks
+
+@app.get("/search")
+def search_tracks(query: str = Query(..., min_length=1), limit: int = Query(5, ge=1, le=20)):
+    token = get_access_token()
+    headers = {"Authorization": f"Bearer {token}"}
+    
+    encoded_query = urllib.parse.quote(query)
+    url = f"https://api.spotify.com/v1/search?q={encoded_query}&type=track&limit={limit}"
+    
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
+    
+    tracks = data.get("tracks", {}).get("items", [])
+    
+    return {
+        "query": query,
+        "count": len(tracks),
+        "tracks": [
+            {
+                "id": track["id"],
+                "uri": track["uri"],
+                "name": track["name"],
+                "artist": ", ".join([a["name"] for a in track["artists"]]),
+                "album": track["album"]["name"],
+                "album_art": track["album"]["images"][0]["url"] if track["album"]["images"] else None,
+                "preview_url": track["preview_url"],
+                "duration_ms": track["duration_ms"]
+            }
+            for track in tracks
+        ]
+    }
+
+
+@app.post("/add-to-playlist")
+def add_to_playlist(track_uri: str = Body(..., embed=True)):
+    token = get_access_token()
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+
+    playlist_id = "2hVJHMukLeyR6XbL1bvBh5"
+    
+    url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
+    payload = {
+        "uris": [track_uri]
+    }
+    
+    response = requests.post(url, json=payload, headers=headers)
+    
+    if response.status_code == 201:
+        return {
+            "success": True,
+            "message": "Track added to playlist successfully",
+            "snapshot_id": response.json().get("snapshot_id")
+        }
+    elif response.status_code == 403:
+        error_response = response.json()
+        spotify_message = error_response.get("error", {}).get("message", "No specific error message provided by Spotify.")
+        return {
+            "success": False,
+            "error": f"Insufficient permissions. Make sure your refresh token has playlist-modify-private scope. (Detail: {spotify_message})"
+        }
+    else:
+        response.raise_for_status()
+        return {
+            "success": False,
+            "error": f"Failed to add track: {response.status_code}"
+        }

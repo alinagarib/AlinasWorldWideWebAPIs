@@ -6,7 +6,7 @@
 # # use on local to get a new refresh token when needed
 # CLIENT_ID = 
 # CLIENT_SECRET = 
-# REDIRECT_URI = 
+# REDIRECT_URI = "
 
 # SCOPE = " ".join([
 #     "user-read-playback-state",
@@ -18,7 +18,9 @@
 #     "user-read-private",
 #     "user-top-read",
 #     "user-read-recently-played",
-#     "user-read-playback-position"
+#     "user-read-playback-position",
+#     "playlist-modify-private",    
+#     "playlist-modify-public",     
 # ])
 
 
