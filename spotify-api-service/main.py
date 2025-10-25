@@ -11,10 +11,15 @@ import os
 import base64
 import boto3
 import urllib.parse
+from pydantic import BaseModel
 
 # Create FastAPI app
 app = FastAPI()
 handler = Mangum(app)
+
+# Models
+class AddToPlaylistRequest(BaseModel):
+    track_uri: str
 
 
 # Health check endpoint
@@ -32,6 +37,7 @@ LISTENING_HISTORY_TABLE = os.environ.get("LISTENING_HISTORY_TABLE")
 dynamodb = boto3.resource('dynamodb')
 recent_summary_table = dynamodb.Table(RECENT_SUMMARY_TABLE)
 listening_history_table = dynamodb.Table(LISTENING_HISTORY_TABLE)
+playlist_id = os.getenv("PLAYLIST_ID")
 
 # ---------- Helper Functions ----------
 def get_access_token():
@@ -288,38 +294,65 @@ def search_tracks(query: str = Query(..., min_length=1), limit: int = Query(5, g
 
 
 @app.post("/add-to-playlist")
-def add_to_playlist(track_uri: str = Body(..., embed=True)):
+def add_to_playlist(request: AddToPlaylistRequest):
     token = get_access_token()
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
-
-    playlist_id = "2hVJHMukLeyR6XbL1bvBh5"
     
     url = f"https://api.spotify.com/v1/playlists/{playlist_id}/tracks"
     payload = {
-        "uris": [track_uri]
+        "uris": [request.track_uri]
     }
     
-    response = requests.post(url, json=payload, headers=headers)
+    try:
+        response = requests.post(url, json=payload, headers=headers)
+        
+        if response.status_code == 201:
+            return {
+                "success": True,
+                "message": "Track added to playlist successfully",
+                "snapshot_id": response.json().get("snapshot_id")
+            }
+        elif response.status_code == 403:
+            error_response = response.json()
+            spotify_message = error_response.get("error", {}).get("message", "No specific error message provided by Spotify.")
+            return {
+                "success": False,
+                "error": f"Insufficient permissions! (Detail: {spotify_message})"
+            }
+        else:
+            return {
+                "success": False,
+                "error": f"Failed to add track: {response.status_code} - {response.text}"
+            }
+    except Exception as e:
+        return {
+            "success": False,
+            "error": f"Exception occurred: {str(e)}"
+        }
+
+@app.get("/get-playlist")
+def get_playlist():
+    token = get_access_token()
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    url = f"https://api.spotify.com/v1/playlists/{playlist_id}"
+    response = requests.get(url, headers=headers)
+    response.raise_for_status()
+    data = response.json()
+
+    external_urls = data.get("external_urls", {})
+    playlist_url = external_urls.get("spotify")
+
+    return {
+        "name": data.get("name"),
+        "url": playlist_url,
+        "description": data.get("description"),
+        "image": data.get("images")[0]["url"] if data.get("images") else None,
+    }
     
-    if response.status_code == 201:
-        return {
-            "success": True,
-            "message": "Track added to playlist successfully",
-            "snapshot_id": response.json().get("snapshot_id")
-        }
-    elif response.status_code == 403:
-        error_response = response.json()
-        spotify_message = error_response.get("error", {}).get("message", "No specific error message provided by Spotify.")
-        return {
-            "success": False,
-            "error": f"Insufficient permissions. Make sure your refresh token has playlist-modify-private scope. (Detail: {spotify_message})"
-        }
-    else:
-        response.raise_for_status()
-        return {
-            "success": False,
-            "error": f"Failed to add track: {response.status_code}"
-        }
+    
